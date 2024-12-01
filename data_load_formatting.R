@@ -70,8 +70,80 @@ data = create_random_host_ids(cleaned_dataset)
 glimpse(data)
 skim(data)
 
-#preprocessing function
+#Formatting values and verifying proper formatting
 
+# 1. Define verification function
+verify_data_processing <- function(original_data, processed_data) {
+  # Store sample size for verification
+  sample_size <- 10
+  
+  # Price verification
+  cat("\n=== Price Verification ===\n")
+  sample_indices <- sample(1:nrow(original_data), sample_size)
+  price_comparison <- data.frame(
+    Original = original_data$price[sample_indices],
+    Processed = processed_data$price[sample_indices]
+  )
+  print(price_comparison)
+  
+  # Date fields verification
+  cat("\n=== Date Fields Verification ===\n")
+  date_fields <- c("host_since", "last_scraped", "first_review", "last_review")
+  for(field in date_fields) {
+    cat("\nChecking", field, ":\n")
+    date_comparison <- data.frame(
+      Original = original_data[[field]][sample_indices],
+      Processed = processed_data[[field]][sample_indices]
+    )
+    print(date_comparison)
+  }
+  
+  # Percentage fields verification
+  cat("\n=== Percentage Fields Verification ===\n")
+  percentage_fields <- c("host_response_rate", "host_acceptance_rate")
+  for(field in percentage_fields) {
+    cat("\nChecking", field, ":\n")
+    percentage_comparison <- data.frame(
+      Original = original_data[[field]][sample_indices],
+      Processed = format(processed_data[[field]][sample_indices] * 100, digits = 2)
+    )
+    print(percentage_comparison)
+  }
+  
+  # Structure comparison
+  cat("\n=== Column Types Comparison ===\n")
+  structure_comparison <- data.frame(
+    Column = names(processed_data),
+    Original_Type = sapply(original_data[names(processed_data)], class),
+    Processed_Type = sapply(processed_data, class)
+  )
+  print(structure_comparison)
+}
+
+
+# 2. Create processed data
+data_processed <- data %>%
+  mutate(
+    price = as.numeric(gsub("[$,]", "", price)),
+    host_since = as.Date(host_since),
+    last_scraped = as.Date(last_scraped),
+    first_review = as.Date(first_review),
+    last_review = as.Date(last_review),
+    host_response_rate = case_when(
+      is.na(host_response_rate) ~ NA_real_,
+      host_response_rate == "" ~ NA_real_,
+      TRUE ~ as.numeric(str_remove(host_response_rate, "%"))/100
+    ),
+    host_acceptance_rate = case_when(
+      is.na(host_acceptance_rate) ~ NA_real_,
+      host_acceptance_rate == "" ~ NA_real_,
+      TRUE ~ as.numeric(str_remove(host_acceptance_rate, "%"))/100
+    )
+  ) %>%
+  select(-c(neighbourhood_group_cleansed, calendar_updated))
+
+# 4. Run verification
+verify_data_processing(data, data_processed)
 
 
 
