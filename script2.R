@@ -43,75 +43,6 @@ ggplot(neighborhood_summary,
     plot.title = element_text(size = 12, face = "bold")
   )
 
-
-#==============================================================================
-# Availability distribution accross neighboorhoods 
-#==============================================================================
-
-# Analyze non-available listings distribution across neighborhoods
-
-# Create a summary of non-availability by neighborhood - to see for available 
-#listings just change 0 to 1
-non_availability_by_neighborhood <- data_EDA %>%
-  group_by(neighbourhood_cleansed) %>%
-  summarise(
-    total_listings = n(),
-    # Count listings that are not available (has_availability = 0)
-    non_available_listings = sum(has_availability == 0),
-    # Calculate the percentage of non-available listings
-    non_availability_rate = (sum(has_availability == 0) / n()) * 100
-  ) %>%
-  # Sort by non-availability rate in descending order
-  arrange(desc(non_availability_rate))
-
-# Visualize the non-availability rates across neighborhoods
-ggplot(non_availability_by_neighborhood, 
-       aes(x = reorder(neighbourhood_cleansed, non_availability_rate), 
-           y = non_availability_rate)) +
-  geom_bar(stat = "identity", fill = "coral") +  
-  coord_flip() +
-  theme_minimal() +
-  labs(
-    title = "Property Non-Availability Rates Across Rome Neighborhoods",
-    subtitle = "Percentage of listings marked as unavailable",
-    x = "Neighborhood",
-    y = "Non-Availability Rate (%)",
-    caption = "Data source: Inside Airbnb"
-  ) +
-  theme(
-    axis.text.y = element_text(size = 8),
-    plot.title = element_text(size = 12, face = "bold")
-  ) +
-  # Add percentage labels to the bars
-  geom_text(aes(label = sprintf("%.1f%%", non_availability_rate)), 
-            hjust = -0.1, 
-            size = 3)
-
-# Calculate comprehensive statistics about non-availability
-non_availability_stats <- non_availability_by_neighborhood %>%
-  summarise(
-    overall_non_availability_rate = mean(non_availability_rate),
-    sd_non_availability = sd(non_availability_rate),
-    min_non_availability = min(non_availability_rate),
-    max_non_availability = max(non_availability_rate),
-    total_non_available = sum(non_available_listings),
-    total_listings = sum(total_listings),
-    overall_percentage = (total_non_available / total_listings) * 100
-  )
-
-print("Non-Availability Statistics by Neighborhood:")
-print(non_availability_by_neighborhood)
-print("\nOverall Non-Availability Statistics:")
-print(non_availability_stats)
-
-# Examine the relationship between neighborhood size and non-availability rate
-correlation_test <- cor.test(
-  non_availability_by_neighborhood$total_listings,
-  non_availability_by_neighborhood$non_availability_rate
-)
-print(correlation_test)
-
-
 #==============================================================================
 # Property type distribution
 #==============================================================================
@@ -157,9 +88,8 @@ ggplot(room_distribution,
     plot.title = element_text(size = 12, face = "bold")
   )
 
-
 #==============================================================================
-# Price distribution analysis
+# Price analysis
 #==============================================================================
 
 # Calculate neighborhood price statistics
@@ -172,6 +102,7 @@ neighborhood_prices <- data_EDA %>%
     max_price = max(price, na.rm = TRUE),
     sd_price = sd(price, na.rm = TRUE),
     listing_count = n(),
+    
     # missing prices: "" or Na
     missing_prices = sum(is.na(price) | price == "")
     
@@ -180,8 +111,112 @@ neighborhood_prices <- data_EDA %>%
 
 print(neighborhood_prices)
 
+# identifying potential outliers using the Interquartile Range (IQR) method
+neighborhood_outliers <- data_EDA %>%
+  group_by(neighbourhood_cleansed) %>%
+  mutate(
+    Q1 = quantile(price, 0.25, na.rm = TRUE),
+    Q3 = quantile(price, 0.75, na.rm = TRUE),
+    IQR = Q3 - Q1,
+    lower_bound = Q1 - 1.5 * IQR,
+    upper_bound = Q3 + 1.5 * IQR,
+    is_outlier = price > upper_bound | price < lower_bound
+  )
+
+# Calculate percentage of outliers per neighborhood
+outlier_summary <- neighborhood_outliers %>%
+  group_by(neighbourhood_cleansed) %>%
+  summarise(
+    total_listings = n(),
+    outliers = sum(is_outlier, na.rm = TRUE),
+    outlier_percentage = (outliers/total_listings) * 100
+  )
+
+print(outlier_summary)
+
+# Visualize the median prices by neighborhood
+ggplot(neighborhood_prices, 
+       aes(x = reorder(neighbourhood_cleansed, median_price), 
+           y = median_price)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  coord_flip() +  
+  theme_minimal() +
+  labs(
+    title = "Median Property Prices by Rome Neighborhood",
+    subtitle = "Neighborhoods ordered by median price",
+    x = "Neighborhood",
+    y = "Median Price (€)"
+  ) +
+  
+  geom_text(aes(label = sprintf("€%.0f", median_price)), 
+            hjust = -0.1, 
+            size = 3)
+
+# First, let's check if we have missing values in the price column
+missing_prices <- sum(is.na(data_EDA$price))
+print(paste("Number of missing prices:", missing_prices))
 
 
+# Now let's fix the boxplot code by adding na.rm = TRUE to the quantile function
+ggplot(data_EDA, aes(x = reorder(neighbourhood_cleansed, price, FUN = median), 
+                     y = price)) +
+  geom_boxplot(fill = "darkblue") +
+  coord_flip() +
+  theme_minimal() +
+  labs(
+    title = "Price Distribution Across Rome Neighborhoods",
+    subtitle = "Box plots showing price ranges and outliers",
+    x = "Neighborhood",
+    y = "Price (€)",
+    caption = "Note: Y-axis limited to 95th percentile for better visualization"
+  ) +
+  scale_y_continuous(limits = c(0, quantile(data_EDA$price, 0.95, na.rm = TRUE))) +
+  theme(axis.text.y = element_text(size = 8))
+
+# Analyse the distribution of prices by room type
+room_type_prices <- data_EDA %>%
+  group_by(room_type) %>%
+  summarise(
+    mean_price = mean(price, na.rm = TRUE),
+    median_price = median(price, na.rm = TRUE),
+    sd_price = sd(price, na.rm = TRUE),
+    count = n()
+  )
+
+print(room_type_prices)
+
+ggplot(data_EDA, aes(x = room_type, y = price, fill = room_type)) +
+  geom_violin(trim = FALSE) +
+  theme_minimal() +
+  labs(
+    title = "Price Distribution by Room Type",
+    x = "Room Type",
+    y = "Price (€)"
+  ) +
+  scale_y_continuous(limits = c(0, quantile(data_EDA$price, 0.95, na.rm = TRUE))) +
+  theme(legend.position = "none")
+
+
+# Correlation between price and review scores
+price_correlations <- data_EDA %>%
+  summarise(
+    price_review_correlation = cor(price, review_scores_rating, use = "complete.obs"),
+  )
+
+print(price_correlations)
+
+# Visualize the relationship between price and review scores
+ggplot(data_EDA, aes(x = price, y = review_scores_rating)) +
+  geom_point(alpha = 0.1) +  # Make points semi-transparent
+  geom_smooth(method = "lm", color = "red") +  # Add a trend line
+  theme_minimal() +
+  labs(
+    title = "Price vs Review Scores in Rome Airbnb Listings",
+    subtitle = "Showing near-zero correlation",
+    x = "Price (€)",
+    y = "Review Score"
+  ) +
+  scale_x_continuous(limits = c(0, quantile(data_EDA$price, 0.95, na.rm = TRUE)))
 
 
 
